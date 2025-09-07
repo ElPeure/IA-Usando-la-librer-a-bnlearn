@@ -1,0 +1,99 @@
+import pandas as pd
+import bnlearn as bn
+
+# Aqui cargamos el dataset propuesto en el titulo y marcamos las columnas de interes
+df = pd.read_csv('/root/.cache/kagglehub/datasets/nsrose7224/crowdedness-at-the-campus-gym/versions/2/data.csv')
+df = df[['day_of_week', 'is_weekend', 'is_holiday', 'is_start_of_semester', 'is_during_semester']] #día de la semana, ser fin de semana, son vacaciones, es el comienzo del semestre, es durante el senestre
+
+
+
+df = df.astype('category')
+
+class_node = 'is_weekend'  # Especificamos la variable de clase
+
+# Le indicamos los modelos que utilizara con 3 métodos distintos aprendiendolos
+dag_hc = bn.structure_learning.fit(df, methodtype='hc') # hill climbing
+dag_tan = bn.structure_learning.fit(df, methodtype='tan', class_node=class_node) # tree augmented naive bayes
+dag_cl = bn.structure_learning.fit(df, methodtype='cl')# Chow-Liu
+
+# Aprender los parámetros (CPDs) de cada DAG
+model_hc = bn.parameter_learning.fit(dag_hc, df)
+model_tan = bn.parameter_learning.fit(dag_tan, df)
+model_cl = bn.parameter_learning.fit(dag_cl, df)
+
+# Visualizar DAGs
+bn.plot(model_hc, title='Hill Climbing')
+bn.plot(model_tan, title='TAN')
+bn.plot(model_cl, title='Chow-Liu')
+
+# Acceder a los CPDs de los modelos aprendidos
+print("CPDs para Hill Climbing:")
+print(model_hc['model'].get_cpds())
+
+print("\nCPDs para TAN:")
+print(model_tan['model'].get_cpds())
+
+print("\nCPDs para Chow-Liu:")
+print(model_cl['model'].get_cpds())
+
+---- Primera parte --------
+
+import numpy as np
+import pandas as pd
+
+def generar_matriz_transicion(n=30):
+    P = np.zeros((n, n))
+
+    for i in range(n):
+        probs = np.random.uniform(low=0.001, high=0.099, size=n)
+        probs[i] = 0  # P(Ji|Ji) = 0 por simplicidad (puedes ajustarlo si quieres permitir quedarse en el mismo juego)
+        total = np.sum(probs)
+        probs = probs / total  # normalizamos para que sumen 1
+        P[i] = probs
+
+    return P
+
+P = generar_matriz_transicion()
+df_P = pd.DataFrame(P, columns=[f'J{i+1}' for i in range(30)], index=[f'J{i+1}' for i in range(30)])
+print(df_P.round(3))
+
+def random_walk(P, epsilon=1e-6, max_iter=10000):
+    n = P.shape[0]
+    v = np.random.rand(n)
+    v = v / v.sum()
+
+    for i in range(max_iter):
+        v_next = v @ P
+        if np.linalg.norm(v_next - v) < epsilon:
+            print(f"Convergencia alcanzada en {i} iteraciones")
+            return v_next
+        v = v_next
+
+    print("No se alcanzó la convergencia")
+    return v
+
+# Simulación
+distribucion_final = random_walk(P)
+print("\nDistribución final (random walk):")
+print(pd.Series(distribucion_final, index=[f'J{i+1}' for i in range(30)]).round(4))
+
+
+--- Segunda Parte -----
+
+from numpy.linalg import eig
+
+def distribucion_estacionaria_analitica(P):
+    # Transponemos la matriz para resolver πP = π => P^Tπ^T = π^T
+    eigvals, eigvecs = eig(P.T)
+
+    # Buscamos el vector propio asociado al valor propio 1
+    idx = np.argmin(np.abs(eigvals - 1))
+    estacionaria = np.real(eigvecs[:, idx])
+    estacionaria = estacionaria / estacionaria.sum()
+
+    return estacionaria
+
+pi = distribucion_estacionaria_analitica(P)
+print("\nDistribución estacionaria (analítica):")
+print(pd.Series(pi, index=[f'J{i+1}' for i in range(30)]).round(4))
+
